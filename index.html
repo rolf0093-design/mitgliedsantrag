@@ -415,43 +415,63 @@ document.getElementById('memberForm').addEventListener('submit', async function(
     const formData = Object.fromEntries(new FormData(this));
     const sigDataUrl = canvas.toDataURL('image/png');
 
+    let step = '';
     try {
-        // 0. Shrink logo for PDF (original is too large for jsPDF)
-        const smallLogo = await shrinkLogo(document.getElementById('logoImg').src);
+        // Step 1: Logo verkleinern
+        step = 'Logo verkleinern';
+        let smallLogo = null;
+        try {
+            smallLogo = await shrinkLogo(document.getElementById('logoImg').src);
+        } catch(e) { /* Logo optional */ }
 
-        // 1. Generate PDF in browser
+        // Step 2: PDF erzeugen
+        step = 'PDF erzeugen';
         const doc = generatePDF(formData, sigDataUrl, smallLogo);
 
-        // 2. Get base64 of PDF directly (jsPDF native method)
+        // Step 3: PDF als Base64
+        step = 'PDF als Base64 exportieren';
         const pdfBase64 = doc.output('base64');
-        const fileName = 'Mitgliedsantrag_' + formData.vorname + '_' + formData.name + '.pdf';
+        const fileName = 'Mitgliedsantrag_' + (formData.vorname || 'Neu') + '_' + (formData.name || 'Antrag') + '.pdf';
 
-        // 3. Send to Netlify Function
+        // Step 4: JSON-Body bauen
+        step = 'Daten vorbereiten';
+        const bodyData = JSON.stringify({
+            pdfBase64: pdfBase64,
+            fileName: fileName,
+            formData: formData
+        });
+
+        // Step 5: An Netlify senden
+        step = 'E-Mail senden (Netlify Function)';
         const response = await fetch('/.netlify/functions/send-antrag', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                pdfBase64: pdfBase64,
-                fileName: fileName,
-                formData: formData
-            })
+            body: bodyData
         });
 
-        const result = await response.json();
-
-        if (!response.ok || result.error) {
-            throw new Error(result.error || 'Server-Fehler');
+        // Step 6: Antwort verarbeiten
+        step = 'Server-Antwort verarbeiten';
+        const responseText = await response.text();
+        let result;
+        try {
+            result = JSON.parse(responseText);
+        } catch(e) {
+            throw new Error('Server gab keine gueltige Antwort: ' + responseText.substring(0, 200));
         }
 
-        // Success!
+        if (!response.ok || result.error) {
+            throw new Error(result.error || 'Server-Fehler (Status ' + response.status + ')');
+        }
+
+        // Erfolg!
         document.getElementById('memberForm').style.display = 'none';
         document.getElementById('successMsg').style.display = 'block';
         window.scrollTo({ top: 0, behavior: 'smooth' });
 
     } catch (err) {
-        console.error('Fehler:', err);
-        errorBanner.innerHTML = '<strong>Fehler beim Senden:</strong> ' + err.message +
-            '<br>Bitte versuchen Sie es erneut.';
+        console.error('Fehler bei Schritt "' + step + '":', err);
+        errorBanner.innerHTML = '<strong>Fehler bei: ' + step + '</strong><br>' + err.message +
+            '<br><br><small>Debug: ' + err.name + ' | Host: ' + window.location.hostname + '</small>';
         errorBanner.style.display = 'block';
         btn.disabled = false;
         btn.textContent = 'Antrag absenden';

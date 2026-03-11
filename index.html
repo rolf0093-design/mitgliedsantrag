@@ -248,10 +248,10 @@
     </div>
 
     <div class="footer">
-        <strong>Vorstand:</strong> Vorsitzender: Hubertus Hof | stellv. Vorsitzende: Kerstin Brunnert<br>
-        Schriftführer: Stefan Sachert | stellv. Schriftführerin: Julia Reine | Kassierer: Wilfried Vondrell<br>
-        stellv. Kassierer: Hans-Georg Ebbemeyer<br><br>
-        <strong>Bankverbindungen:</strong> Volksbank Stormede-Westenholz eG | Sparkasse Delbrück, IBAN DE86 4725 1740 0004 0065 76
+        <strong>Vorstand:</strong> Vorsitzender: Hubertus Rolf | stellv. Vorsitzende: Kerstin Brunnert<br>
+        Schriftführer: Stefan Sudhoff | stellv. Schriftführerin: Julia Reike | Kassierer: Wilfried Vorhoff<br>
+        stellv. Kassierer: Hans-Georg Ebbesmeyer<br><br>
+        <strong>Bankverbindung:</strong> Volksbank Störmede-Westenholz-Hörste, IBAN DE34 4166 2465 0000 8985 01
     </div>
 </div>
 
@@ -294,13 +294,31 @@ document.getElementById('clearSig').addEventListener('click', () => {
 });
 
 // ============ PDF GENERATION ============
-function generatePDF(data, sigDataUrl, logoSrc) {
+// Pre-shrink logo via canvas to avoid jsPDF size issues
+function shrinkLogo(src) {
+    return new Promise((resolve) => {
+        const img = new Image();
+        img.onload = function() {
+            const c = document.createElement('canvas');
+            c.width = 150; c.height = 150;
+            const cx = c.getContext('2d');
+            cx.drawImage(img, 0, 0, 150, 150);
+            resolve(c.toDataURL('image/jpeg', 0.7));
+        };
+        img.onerror = () => resolve(null);
+        img.src = src;
+    });
+}
+
+function generatePDF(data, sigDataUrl, smallLogoDataUrl) {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
     const today = new Date().toLocaleDateString('de-DE');
 
-    // Logo
-    try { doc.addImage(logoSrc, 'PNG', 155, 8, 40, 40); } catch(e) {}
+    // Logo (pre-shrunk JPEG)
+    if (smallLogoDataUrl) {
+        try { doc.addImage(smallLogoDataUrl, 'JPEG', 155, 8, 40, 40); } catch(e) {}
+    }
 
     // Title
     doc.setFontSize(20); doc.setFont('helvetica', 'bold');
@@ -376,9 +394,9 @@ function generatePDF(data, sigDataUrl, logoSrc) {
     y = 275;
     doc.setLineWidth(0.4); doc.line(25, y, 185, y); y += 4;
     doc.setFontSize(7); doc.setTextColor(120);
-    doc.text('Vorstand: Vorsitzender: Hubertus Hof | stellv. Vorsitzende: Kerstin Brunnert | Schriftfuehrer: Stefan Sachert', 25, y); y += 3;
-    doc.text('stellv. Schriftfuehrerin: Julia Reine | Kassierer: Wilfried Vondrell | stellv. Kassierer: Hans-Georg Ebbemeyer', 25, y); y += 3;
-    doc.text('Bankverbindungen: Volksbank Stormede-Westenholz eG | Sparkasse Delbrueck, IBAN DE86 4725 1740 0004 0065 76', 25, y);
+    doc.text('Vorstand: Vorsitzender: Hubertus Rolf | stellv. Vorsitzende: Kerstin Brunnert | Schriftfuehrer: Stefan Sudhoff', 25, y); y += 3;
+    doc.text('stellv. Schriftfuehrerin: Julia Reike | Kassierer: Wilfried Vorhoff | stellv. Kassierer: Hans-Georg Ebbesmeyer', 25, y); y += 3;
+    doc.text('Bankverbindung: Volksbank Stoermede-Westenholz-Hoerste, IBAN DE34 4166 2465 0000 8985 01', 25, y);
 
     return doc;
 }
@@ -396,14 +414,16 @@ document.getElementById('memberForm').addEventListener('submit', async function(
 
     const formData = Object.fromEntries(new FormData(this));
     const sigDataUrl = canvas.toDataURL('image/png');
-    const logoSrc = document.getElementById('logoImg').src;
 
     try {
-        // 1. Generate PDF in browser
-        const doc = generatePDF(formData, sigDataUrl, logoSrc);
+        // 0. Shrink logo for PDF (original is too large for jsPDF)
+        const smallLogo = await shrinkLogo(document.getElementById('logoImg').src);
 
-        // 2. Get base64 of PDF (without data:... prefix)
-        const pdfBase64 = doc.output('datauristring').split(',')[1];
+        // 1. Generate PDF in browser
+        const doc = generatePDF(formData, sigDataUrl, smallLogo);
+
+        // 2. Get base64 of PDF directly (jsPDF native method)
+        const pdfBase64 = doc.output('base64');
         const fileName = 'Mitgliedsantrag_' + formData.vorname + '_' + formData.name + '.pdf';
 
         // 3. Send to Netlify Function

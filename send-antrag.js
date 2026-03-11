@@ -18,7 +18,7 @@ exports.handler = async (event) => {
     // Send email with PDF attachment
     const { data, error } = await resend.emails.send({
       from: 'Heimatverein Westenholz <onboarding@resend.dev>',
-      to: ['h.rolf@koeckerling-frische.de'],
+      to: ['h.rolf@koeckerling-frische.de', 'julia.reike@web.de'],
       subject: `Mitgliedsantrag - ${formData.vorname} ${formData.name}`,
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px;">
